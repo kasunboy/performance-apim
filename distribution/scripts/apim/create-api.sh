@@ -153,7 +153,6 @@ app_request() {
    "name":"PerformanceTestAPP",
    "throttlingPolicy":"Unlimited",
    "description":"PerformanceTestAPP",
-   "tokenType":"$token_type",
    "attributes":{ 
    }
 }
@@ -162,27 +161,14 @@ EOF
 
 client_credentials=$($curl_command -u admin:admin -H "Content-Type: application/json" -d "$(client_request)" ${base_https_url}/client-registration/v0.17/register | jq -r '.clientId + ":" + .clientSecret')
 
-get_access_token() {
-    local access_token=$($curl_command -d "grant_type=password&username=admin&password=admin&scope=apim:$1" -u $client_credentials ${nio_https_url}/token | jq -r '.access_token')
-    echo $access_token
-}
-
-view_access_token=$(get_access_token api_view)
-create_access_token=$(get_access_token api_create)
-publish_access_token=$(get_access_token api_publish)
-subscribe_access_token=$(get_access_token subscribe)
-app_access_token=$(get_access_token app_manage)
-mediation_policy_create_token=$(get_access_token mediation_policy_create) 
-sub_manage_token=$(get_access_token sub_manage) 
-
 # Find "PerformanceTestAPP" ID
 echo "Getting PerformanceTestAPP ID"
-application_id=$($curl_command -H "Authorization: Bearer $subscribe_access_token" "${base_https_url}/api/am/store/v1/applications?query=PerformanceTestAPP" | jq -r '.list[0] | .applicationId')
+application_id=$($curl_command "${base_https_url}/api/am/store/v1/applications?query=PerformanceTestAPP" | jq -r '.list[0] | .applicationId')
 if [ ! -z $application_id ] && [ ! $application_id = "null" ]; then
     echo "Found application id for \"PerformanceTestAPP\": $application_id"
 else
     echo "Creating \"PerformanceTestAPP\" application"
-    application_id=$($curl_command -X POST -H "Authorization: Bearer $app_access_token" -H "Content-Type: application/json" -d "$(app_request)" "${base_https_url}/api/am/store//applications" | jq -r '.applicationId')
+    application_id=$($curl_command -X POST -H "Content-Type: application/json" -d "$(app_request)" "${base_https_url}/api/am/store//applications" | jq -r '.applicationId')
     if [ ! -z $application_id ] && [ ! $application_id = "null" ]; then
         echo "Found application id for \"PerformanceTestAPP\": $application_id"
     else
@@ -193,52 +179,6 @@ fi
 
 echo -ne "\n"
 
-generate_keys_request() {
-    cat <<EOF
-{ 
-   "keyType":"PRODUCTION",
-   "grantTypesToBeSupported":[ 
-      "refresh_token",
-      "password",
-      "client_credentials",
-      "urn:ietf:params:oauth:grant-type:jwt-bearer"
-   ],
-   "callbackUrl":"wso2.org"
-}
-EOF
-}
-
-echo "Finding Consumer Key for PerformanceTestAPP"
-
-# Check if keys exists
-keys_response=$($curl_command -H "Authorization: Bearer $subscribe_access_token" "${base_https_url}/api/am/store/v1/applications/$application_id/keys/PRODUCTION")
-consumer_key=$(echo $keys_response | jq -r '.consumerKey')
-if [ ! -z $consumer_key ] && [ ! $consumer_key = "null" ]; then
-    echo "Keys already generated for \"PerformanceTestAPP\". Consumer key is $consumer_key"
-else
-    echo "Keys not generated for \"PerformanceTestAPP\". Generating keys"
-    # Generate Keys
-    keys_response=$($curl_command -H "Authorization: Bearer $app_access_token" -H "Content-Type: application/json" -d "$(generate_keys_request)" "${base_https_url}/api/am/store/v1/applications/$application_id/generate-keys")
-    consumer_key=$(echo $keys_response | jq -r '.consumerKey')
-    if [ ! -z $consumer_key ] && [ ! $consumer_key = "null" ]; then
-        echo "Keys generated for \"PerformanceTestAPP\". Consumer key is $consumer_key"
-    else
-        echo "Failed to generate keys for \"PerformanceTestAPP\""
-        # Get Key from application
-        keys_response=$($curl_command -H "Authorization: Bearer $subscribe_access_token" "${base_https_url}/api/am/store/v1/applications/$application_id")
-        consumer_key=$(echo $keys_response | jq -r '.keys[0] | .consumerKey')
-        if [ ! -z $consumer_key ] && [ ! $consumer_key = "null" ]; then
-            echo "Retrieved keys for \"PerformanceTestAPP\". Consumer key is $consumer_key"
-        else
-            echo "Failed to retrieve keys for \"PerformanceTestAPP\""
-            exit 1
-        fi
-    fi
-fi
-
-#Write consumer key to file
-mkdir -p "$script_dir/target"
-echo $consumer_key >"$script_dir/target/consumer_key"
 #Write application id to file
 echo $application_id >"$script_dir/target/application_id"
 echo -ne "\n"
@@ -246,31 +186,32 @@ echo -ne "\n"
 # Create APIs
 api_create_request() {
     cat <<EOF
-{ 
+{
    "name":"$1",
    "description":"$2",
    "context":"/$1",
    "version":"1.0.0",
    "provider":"admin",
-   "policies":[ 
+   "policies":[
       "Unlimited"
    ],
-   "endpointConfig":{ 
+   "endpointConfig":{
       "endpoint_type":"${backend_endpoint_type}",
-      "sandbox_endpoints":{ 
+      "sandbox_endpoints":{
          "url":"${backend_endpoint_url}"
       },
-      "production_endpoints":{ 
+      "production_endpoints":{
          "url":"${backend_endpoint_url}"
       }
    },
-   "gatewayEnvironments":[ 
+   "gatewayEnvironments":[
       "Production and Sandbox"
    ],
-   "operations":[ 
-      { 
+   "operations":[
+      {
          "target":"/*",
          "verb":"POST",
+         "authType":"None",
          "throttlingPolicy":"Unlimited"
       }
    ]
@@ -290,7 +231,7 @@ EOF
 
 subscription_request() {
     cat <<EOF
-{ 
+{
    "apiId":"$1",
    "applicationId":"$application_id",
    "throttlingPolicy":"Unlimited"
@@ -304,17 +245,17 @@ create_api() {
     local out_sequence="$3"
     echo "Creating $api_name API..."
     # Check whether API exists
-    local existing_api_id=$($curl_command -H "Authorization: Bearer $view_access_token" ${base_https_url}/api/am/publisher/v1/apis?query=name:$api_name\$ | jq -r '.list[0] | .id')
+    local existing_api_id=$($curl_command ${base_https_url}/api/am/publisher/v1/apis?query=name:$api_name\$ | jq -r '.list[0] | .id')
     if [ ! -z $existing_api_id ] && [ ! $existing_api_id = "null" ]; then
         echo "$api_name API already exists with ID $existing_api_id"
         echo -ne "\n"
         if (confirm "Delete $api_name API?"); then
             # Check subscriptions first
-            local subscription_id=$($curl_command -H "Authorization: Bearer $subscribe_access_token" "${base_https_url}/api/am/store/v1/subscriptions?apiId=$existing_api_id" | jq -r '.list[0] | .subscriptionId')
+            local subscription_id=$($curl_command "${base_https_url}/api/am/store/v1/subscriptions?apiId=$existing_api_id" | jq -r '.list[0] | .subscriptionId')
             if [ ! -z $subscription_id ] && [ ! $subscription_id = "null" ]; then
                 echo "Subscription found for $api_name API. Subscription ID is $subscription_id"
                 # Delete subscription
-                local delete_subscription_status=$($curl_command -w "%{http_code}" -o /dev/null -H "Authorization: Bearer $subscribe_access_token" -X DELETE "${base_https_url}/api/am/store/v1/subscriptions/$subscription_id")
+                local delete_subscription_status=$($curl_command -w "%{http_code}" -o /dev/null -X DELETE "${base_https_url}/api/am/store/v1/subscriptions/$subscription_id")
                 if [ $delete_subscription_status -eq 200 ]; then
                     echo "Subscription $subscription_id deleted!"
                     echo -ne "\n"
@@ -328,7 +269,7 @@ create_api() {
                 echo -ne "\n"
             fi
 
-            local delete_api_status=$($curl_command -w "%{http_code}" -o /dev/null -H "Authorization: Bearer $create_access_token" -X DELETE "${base_https_url}/api/am/publisher/v1/apis/$existing_api_id")
+            local delete_api_status=$($curl_command -w "%{http_code}" -o /dev/null -X DELETE "${base_https_url}/api/am/publisher/v1/apis/$existing_api_id")
             if [ $delete_api_status -eq 200 ]; then
                 echo "$api_name API deleted!"
                 echo -ne "\n"
@@ -341,7 +282,7 @@ create_api() {
             return
         fi
     fi
-    local api_id=$($curl_command -H "Authorization: Bearer $create_access_token" -H "Content-Type: application/json" -d "$(api_create_request $api_name $api_desc)" ${base_https_url}/api/am/publisher/v1/apis | jq -r '.id')
+    local api_id=$($curl_command -H "Content-Type: application/json" -d "$(api_create_request $api_name $api_desc)" ${base_https_url}/api/am/publisher/v1/apis | jq -r '.id')
     if [ ! -z $api_id ] && [ ! $api_id = "null" ]; then
         echo "Created $api_name API with ID $api_id"
         echo -ne "\n"
@@ -351,7 +292,7 @@ create_api() {
         return
     fi
     echo "Publishing $api_name API"
-    local publish_api_status=$($curl_command -w "%{http_code}" -o /dev/null -H "Authorization: Bearer $publish_access_token" -X POST "${base_https_url}/api/am/publisher/v1/apis/change-lifecycle?action=Publish&apiId=${api_id}")
+    local publish_api_status=$($curl_command -w "%{http_code}" -o /dev/null -X POST "${base_https_url}/api/am/publisher/v1/apis/change-lifecycle?action=Publish&apiId=${api_id}")
     if [ $publish_api_status -eq 200 ]; then
         echo "$api_name API Published!"
         echo -ne "\n"
@@ -362,7 +303,7 @@ create_api() {
     fi
     if [ ! -z "$out_sequence" ]; then
         echo "Adding mediation policy to $api_name API"
-        local sequence_id=$($curl_command -H "Authorization: Bearer $mediation_policy_create_token" -F type=out -F mediationPolicyFile=@$script_dir/payload/mediation-api-sequence.xml "${base_https_url}/api/am/publisher/v1/apis/${api_id}/mediation-policies" | jq -r '.id')
+        local sequence_id=$($curl_command -F type=out -F mediationPolicyFile=@$script_dir/payload/mediation-api-sequence.xml "${base_https_url}/api/am/publisher/v1/apis/${api_id}/mediation-policies" | jq -r '.id')
         if [ ! -z $sequence_id ] && [ ! $sequence_id = "null" ]; then
             echo "Mediation policy added to $api_name API with ID $sequence_id"
             echo -ne "\n"
@@ -377,7 +318,7 @@ create_api() {
         until [ $n -ge 50 ]; do
             sleep 10
             #Get API
-            api_details="$($curl_command -H "Authorization: Bearer $view_access_token" "${base_https_url}/api/am/publisher/v1/apis/${api_id}" || echo "")"
+            api_details="$($curl_command "${base_https_url}/api/am/publisher/v1/apis/${api_id}" || echo "")"
             if [ -n "$api_details" ]; then
                 # Update API with sequence
                 echo "Updating $api_name API to set mediation policy..."
@@ -389,7 +330,7 @@ create_api() {
         n=0
         until [ $n -ge 50 ]; do
             sleep 10
-            local updated_api="$($curl_command -H "Authorization: Bearer $create_access_token" -H "Content-Type: application/json" -X PUT -d "$api_details" "${base_https_url}/api/am/publisher/v1/apis/${api_id}")"
+            local updated_api="$($curl_command -H "Content-Type: application/json" -X PUT -d "$api_details" "${base_https_url}/api/am/publisher/v1/apis/${api_id}")"
             local updated_api_id=$(echo "$updated_api" | jq -r '.id')
             if [ ! -z $updated_api_id ] && [ ! $updated_api_id = "null" ]; then
                 echo "Mediation policy is set to $api_name API with ID $updated_api_id"
@@ -403,7 +344,7 @@ create_api() {
         fi
     fi
     echo "Subscribing $api_name API to PerformanceTestAPP"
-    local subscription_id=$($curl_command -H "Authorization: Bearer $sub_manage_token" -H "Content-Type: application/json" -d "$(subscription_request $api_id)" "${base_https_url}/api/am/store/v1/subscriptions" | jq -r '.subscriptionId')
+    local subscription_id=$($curl_command -H "Content-Type: application/json" -d "$(subscription_request $api_id)" "${base_https_url}/api/am/store/v1/subscriptions" | jq -r '.subscriptionId')
     if [ ! -z $subscription_id ] && [ ! $subscription_id = "null" ]; then
         echo "Successfully subscribed $api_name API to PerformanceTestAPP. Subscription ID is $subscription_id"
         echo -ne "\n"
