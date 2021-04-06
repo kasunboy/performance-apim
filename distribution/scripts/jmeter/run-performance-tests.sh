@@ -37,16 +37,16 @@ function initialize() {
 }
 export -f initialize
 
-declare -A test_scenario0=(
-    [name]="passthrough"
-    [display_name]="Passthrough"
-    [description]="A secured API, which directly invokes the back-end service."
-    [jmx]="apim-test.jmx"
-    [protocol]="https"
-    [path]="/echo/1.0.0"
-    [use_backend]=true
-    [skip]=false
-)
+#declare -A test_scenario0=(
+#    [name]="passthrough"
+#    [display_name]="Passthrough"
+#    [description]="A secured API, which directly invokes the back-end service."
+#    [jmx]="apim-test.jmx"
+#    [protocol]="https"
+#    [path]="/echo/1.0.0"
+#    [use_backend]=true
+#    [skip]=false
+#)
 declare -A test_scenario1=(
     [name]="transformation"
     [display_name]="Transformation"
