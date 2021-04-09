@@ -90,8 +90,8 @@ if [[ $JAVA_VERSION =~ ^1\.8.* ]]; then
     export JAVA_OPTS="-XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:/home/ubuntu/wso2am/repository/logs/gc.log"
 else 
     # for jdk11
-    #export JAVA_OPTS="-Xlog:gc*,safepoint,gc+heap=trace:file=/home/ubuntu/wso2am/repository/logs/gc.log:uptime,utctime,level,tags "
-    export JAVA_OPTS="-Xlog:gc*,safepoint,gc+heap=trace:file=/home/ubuntu/wso2am/repository/logs/gc.log:uptime,utctime,level,tags -XX:StartFlightRecording=disk=true,delay=120s,duration=10m,name=Profiling,filename=/home/ubuntu/wso2am/repository/logs/recording.jfr,settings=profile,path-to-gc-roots=true "
+    export JAVA_OPTS="-Xlog:gc*,safepoint,gc+heap=trace:file=/home/ubuntu/wso2am/repository/logs/gc.log:uptime,utctime,level,tags "
+    #export JAVA_OPTS="-Xlog:gc*,safepoint,gc+heap=trace:file=/home/ubuntu/wso2am/repository/logs/gc.log:uptime,utctime,level,tags -XX:StartFlightRecording=disk=true,delay=120s,duration=10m,name=Profiling,filename=/home/ubuntu/wso2am/repository/logs/recording.jfr,settings=profile,path-to-gc-roots=true "
 fi
 
 # export JAVA_OPTS="-Xlog:gc*,safepoint,gc+heap=trace:file=/home/ubuntu/wso2am/repository/logs/gc.log:uptime,utctime,level,tags "
